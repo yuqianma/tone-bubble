@@ -1,5 +1,7 @@
 import p5 from "p5";
 import * as Tone from "tone";
+import { app, db, collectionRef } from "../firebaseApp";
+import { onSnapshot, query, where } from "firebase/firestore";
 
 interface Point {
   x: number;
@@ -8,15 +10,28 @@ interface Point {
   time: number;
 };
 
+const q = query(collectionRef);
+const unsubscribe = onSnapshot(q, (querySnapshot) => {
+  const points: any[] = [];
+  querySnapshot.forEach((doc) => {
+      points.push(doc.data());
+  });
+  console.log("Current", points);
+});
+
+
 // interaction limits
 const MIN_RADIUS = 5;
 const MAX_RADIUS = 100;
 
 const MAX_PRESS_TIME = 2000;
 
-const Chords = ["C3", "D3", "E3", "F3", "G3", "A4", "B4"];
+const Chords = ["C3", "D3", "E3", "F3", "G3", "A3", "B3"];
 
 const synth = new Tone.Synth().toDestination();
+
+(window as any).Tone = Tone;
+(window as any).synth = synth;
 
 const sketchBubble = ( p: p5 ) => {
 
@@ -28,7 +43,7 @@ const sketchBubble = ( p: p5 ) => {
   const spaceHeight = height - attackLineY;
 
   const bubblingTime = 5 * 1000;
-  const consumingTime = 2 * 1000;
+  const consumingTime = 1 * 1000;
 
   const pressStartInfo = { x: 0, y: 0, startTime: 0 };
 
@@ -65,9 +80,9 @@ const sketchBubble = ( p: p5 ) => {
       if (getPointTimeLeftToAttack(now, point) <= 0) {
         nextConsumingPoints.push(point);
         // tone
-        const duration = getPointConsumingTimeLeft(now, point);
-        const c = Chords[point.x / width * 7 | 0];
-        // console.log(c, duration);
+        const c = Chords[point.x / spaceWidth * Chords.length | 0];
+        const duration = getPointConsumingTimeLeft(now, point) / 1000;
+        console.log(c, duration);
         synth.triggerAttackRelease(c, duration);
       } else {
         nextPointsToConsume.push(point);
@@ -113,7 +128,7 @@ const sketchBubble = ( p: p5 ) => {
     }
   };
 
-  p.mousePressed = () => {
+  p.mousePressed = (e) => {
     interactingCircle.x = p.mouseX;
     interactingCircle.y = p.mouseY;
     interactingCircle.radius = MIN_RADIUS;
@@ -127,7 +142,7 @@ const sketchBubble = ( p: p5 ) => {
     interactingCircle.radius = Math.min(interactingCircle.radius + delta, MAX_RADIUS);
   }
 
-  p.mouseReleased = () => {
+  p.mouseReleased = (e) => {
     pointsToConsume.push({
       x: interactingCircle.x,
       y: interactingCircle.y,
@@ -159,10 +174,17 @@ const sketchBubble = ( p: p5 ) => {
 
 };
 
+let instance: p5;
+
 export function createSketchBubble(node: HTMLElement) {
+  if (instance) {
+    instance.remove();
+  }
   if (node) {
     node.innerHTML = "";
   }
-  let myp5 = new p5(sketchBubble, node);
-  (window as any).myp5 = myp5;
+  instance = new p5(sketchBubble, node);
+  // for debug
+  (window as any).myp5 = instance;
+  return instance;
 }

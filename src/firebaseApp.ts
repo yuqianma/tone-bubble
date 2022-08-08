@@ -1,6 +1,7 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
+import { getFirestore, addDoc, collection, onSnapshot, query, where } from "firebase/firestore";
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -20,3 +21,23 @@ const firebaseConfig = {
 // Initialize Firebase
 export const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app);
+
+export const db = getFirestore(app);
+
+const COLLECTION_NAME = "tonePoints";
+
+export const collectionRef = collection(db, COLLECTION_NAME);
+
+// debug
+async function test() {
+  const docRef = await addDoc(collection(db, COLLECTION_NAME), {
+    x: Math.random(),
+    y: Math.random(),
+    radius: Math.random(),
+    time: Date.now()
+  });
+  console.log("Document written with ID: ", docRef.id);
+}
+
+(window as any).firebaseTest = test;
+
