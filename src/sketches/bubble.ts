@@ -65,7 +65,7 @@ const sketchBubble = ( p: p5 ) => {
     if (unsubscribe) {
       unsubscribe();
     }
-    const q = query(collectionRef, where("time", ">", Date.now()));
+    const q = query(collectionRef, where("time", ">", Date.now() - 10 * 1000));
     unsubscribe = onSnapshot(q, (querySnapshot) => {
       const points: any[] = [];
       querySnapshot.forEach((doc) => {
