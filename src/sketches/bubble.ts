@@ -60,24 +60,15 @@ const sketchBubble = ( p: p5 ) => {
   let pointsToConsume: Point[] = [];
   let consumingPoints: Point[] = [];
 
-  let unsubscribe: () => void; 
-  const listen = () => {
-    if (unsubscribe) {
-      unsubscribe();
-    }
-    const q = query(collectionRef, where("time", ">", Date.now() - 10 * 1000));
-    unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const points: any[] = [];
-      querySnapshot.forEach((doc) => {
-          points.push(doc.data());
-      });
-      console.log("Current", points);
-      pointsToConsume = points;
+  const q = query(collectionRef, where("time", ">", Date.now() - 10 * 1000));
+  const unsubscribe = onSnapshot(q, (querySnapshot) => {
+    const points: any[] = [];
+    querySnapshot.forEach((doc) => {
+        points.push(doc.data());
     });
-  }
-
-  // update every 10s to prevent getting old data
-  setInterval(listen, 10 * 1000);
+    console.log("Current", points);
+    pointsToConsume = points;
+  });
 
   async function addPoint(point: Point) {
     const docRef = await addDoc(collectionRef, point);
