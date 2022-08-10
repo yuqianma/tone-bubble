@@ -6,7 +6,7 @@ import { onSnapshot, query, where } from "firebase/firestore";
 interface Point {
   x: number;
   y: number;
-  radius: number;
+  ratio: number;
   time: number;
 };
 
@@ -19,14 +19,22 @@ const unsubscribe = onSnapshot(q, (querySnapshot) => {
   console.log("Current", points);
 });
 
-
 // interaction limits
 const MIN_RADIUS = 5;
-const MAX_RADIUS = 100;
+const MIN_RADIUS_RATIO = 0.01;
+const MAX_RADIUS_RATIO = 0.1;
+const MIN_RATIO = 0.1; // duration
 
-const MAX_PRESS_TIME = 2000;
+const ATTACK_LINE_Y_RATIO = 0.2;
 
-const Chords = ["C3", "D3", "E3", "F3", "G3", "A3", "B3"];
+const MAX_PRESS_TIME = 2 * 1000;
+const BUBBLING_TIME = 5 * 1000;
+const CONSUMING_TIME = 1 * 1000;
+
+const Notes = [
+  "C3", "D3", "E3", "F3", "G3", "A3", "B3",
+  "C4", "D4", "E4", "F4", "G4", "A4", "B4",
+];
 
 const synth = new Tone.Synth().toDestination();
 
@@ -37,20 +45,25 @@ const sketchBubble = ( p: p5 ) => {
 
   const width = p.windowWidth;
   const height = p.windowHeight;
-  const attackLineY = 200;
+
+  const attackLineY = height * ATTACK_LINE_Y_RATIO;
 
   const spaceWidth = width;
   const spaceHeight = height - attackLineY;
 
-  const bubblingTime = 5 * 1000;
-  const consumingTime = 1 * 1000;
+  const maxPressTime = MAX_PRESS_TIME;
+  const bubblingTime = BUBBLING_TIME;
+  const consumingTime = CONSUMING_TIME;
 
-  const pressStartInfo = { x: 0, y: 0, startTime: 0 };
+  const length = Math.min(spaceWidth, spaceHeight);
+  const minRadius = Math.max(length * MIN_RADIUS_RATIO, MIN_RADIUS);
+  const maxRadius = length * MAX_RADIUS_RATIO;
 
   const interactingCircle = {
     x: 0,
     y: 0,
-    radius: 0,
+    ratio: 0,
+    startTime: 0,
   };
 
   let pointsToConsume: Point[] = [];
@@ -63,11 +76,25 @@ const sketchBubble = ( p: p5 ) => {
   p.draw = () => {
     p.background(255);
 
+    // attack line
     p.stroke("#ccc");
     p.strokeWeight(2);
     p.line(0, attackLineY, width, attackLineY);
 
+    // Notes
+    p.textAlign(p.CENTER, p.CENTER);
+    p.fill("#aaa");
     p.strokeWeight(1);
+    const colWidth = spaceWidth / Notes.length;
+    for (let i = 0; i < Notes.length; i++) {
+      const note = Notes[i];
+      const x = colWidth * i;
+      const y = attackLineY;
+      p.line(x, y, x, y + spaceHeight);
+      p.text(note, x + colWidth / 2, y + spaceHeight - 30);
+    }
+
+    p.noStroke();
     // p.fill(220);
     // p.circle(200, 200, 100);
 
@@ -80,10 +107,12 @@ const sketchBubble = ( p: p5 ) => {
       if (getPointTimeLeftToAttack(now, point) <= 0) {
         nextConsumingPoints.push(point);
         // tone
-        const c = Chords[point.x / spaceWidth * Chords.length | 0];
+        const c = Notes[point.x * Notes.length | 0];
         const duration = getPointConsumingTimeLeft(now, point) / 1000;
-        console.log(c, duration);
-        synth.triggerAttackRelease(c, duration);
+        if (duration > 0) {
+          console.log(c, duration);
+          synth.triggerAttackRelease(c, duration);
+        }
       } else {
         nextPointsToConsume.push(point);
       }
@@ -92,69 +121,91 @@ const sketchBubble = ( p: p5 ) => {
     pointsToConsume = nextPointsToConsume;
 
     pointsToConsume.forEach((point) => {
-      p.fill(100, 100, 100, 100);
-      const y = getPointCurrentY(now, point);
-      p.circle(point.x, y, point.radius * 2 * MAX_RADIUS);
+      const y = getPointCurrentYRatio(now, point);
+      const fillColor = getCircleColor(point.ratio);
+      p.fill(fillColor);
+      drawCircle(point.x, y, point.ratio);
     });
 
     consumingPoints.forEach((point) => {
-      p.fill(50, 50, 50, 100);
       const consumingTimeLeft = getPointConsumingTimeLeft(now, point);
-      const radius = consumingTimeLeft / consumingTime;
-      p.circle(point.x, attackLineY, radius * 2 * MAX_RADIUS);
       if (consumingTimeLeft > 0) {
+        const fillColor = getCircleColor(point.ratio);
+        p.fill(fillColor);
+        drawCircle(point.x, 0, point.ratio * consumingTimeLeft / consumingTime);
         nextConsumingPoints.push(point);
-      }
+      } 
     });
 
     consumingPoints = nextConsumingPoints;
 
     if (p.mouseIsPressed) {
       mousePressing();
-      const fillColor = p.color("#0bd");
-      fillColor.setAlpha(100);
-      p.fill(fillColor);
+      p.fill(100, 100, 100, 100);
       p.stroke("#0bd");
     } else {
+      p.fill(100, 100, 100, 100);
       p.fill("#0bd");
-      p.noStroke();
+      // p.noStroke();
     }
 
-    // p.noStroke();
-
-    let { x, y, radius } = interactingCircle;
-    if (radius) {
-      p.circle(x, y, radius * 2);
+    let { x, y, ratio } = interactingCircle;
+    if (ratio) {
+      drawCircle(x, y, ratio);
     }
   };
 
   p.mousePressed = (e) => {
-    interactingCircle.x = p.mouseX;
-    interactingCircle.y = p.mouseY;
-    interactingCircle.radius = MIN_RADIUS;
-    pressStartInfo.x = p.mouseX;
-    pressStartInfo.y = p.mouseY;
-    pressStartInfo.startTime = Date.now();
+    if (interactingCircle.startTime) {
+      return;
+    }
+    if (p.mouseY < attackLineY) {
+      return;
+    }
+    interactingCircle.x = p.mouseX / spaceWidth;
+    interactingCircle.y = (p.mouseY - attackLineY) / spaceHeight;
+    interactingCircle.ratio = MIN_RATIO;
+    interactingCircle.startTime = Date.now();
   }
 
   function mousePressing() {
-    const delta = (Date.now() - pressStartInfo.startTime) / MAX_PRESS_TIME * MAX_RADIUS;
-    interactingCircle.radius = Math.min(interactingCircle.radius + delta, MAX_RADIUS);
+    if (!interactingCircle.startTime) {
+      return;
+    }
+    const delta = (Date.now() - interactingCircle.startTime) / maxPressTime;
+    interactingCircle.ratio = Math.min(interactingCircle.ratio + delta, 1);
   }
 
   p.mouseReleased = (e) => {
+    if (!interactingCircle.startTime) {
+      return false;
+    }
     pointsToConsume.push({
       x: interactingCircle.x,
       y: interactingCircle.y,
-      radius: interactingCircle.radius / MAX_RADIUS,
+      ratio: interactingCircle.ratio,
       time: Date.now(),
     });
 
-    interactingCircle.radius = 0;
+    interactingCircle.ratio = 0;
+    interactingCircle.startTime = 0;
+
+    return false;
+  }
+
+  function getCircleColor(ratio: number) {
+    const fillColor = p.color(`hsl(${(ratio * 360 + 180) % 360  | 0}, 60%, 70%)`);
+    fillColor.setAlpha(100);
+    return fillColor;
+  }
+
+  function drawCircle(xRatio: number, yRatio: number, ratio: number) {
+    const radius = p.map(ratio, 0, 1, 0, maxRadius);
+    p.circle(xRatio * spaceWidth, yRatio * spaceHeight + attackLineY, radius * 2);
   }
 
   function getPointTimeLeftToAttack(now: number, point: Point) {
-    const initTimeLeft = (point.y - attackLineY) / spaceHeight * bubblingTime;
+    const initTimeLeft = point.y * bubblingTime;
     const timeLeft = initTimeLeft - (now - point.time);
     return timeLeft;
   }
@@ -162,14 +213,13 @@ const sketchBubble = ( p: p5 ) => {
   function getPointConsumingTimeLeft(now: number, point: Point) {
     const attackTimeLeft = getPointTimeLeftToAttack(now, point);
     const attackTimePassed = - attackTimeLeft;
-    const initConsumingTimeLeft = point.radius * consumingTime;
+    const initConsumingTimeLeft = point.ratio * consumingTime;
     return initConsumingTimeLeft - attackTimePassed;
   }
 
-  function getPointCurrentY(now: number, point: Point) {
+  function getPointCurrentYRatio(now: number, point: Point) {
     const timeLeft = getPointTimeLeftToAttack(now, point);
-    const y = attackLineY + timeLeft / bubblingTime * spaceHeight;
-    return y;
+    return timeLeft / bubblingTime;
   }
 
 };
