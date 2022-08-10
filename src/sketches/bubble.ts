@@ -1,7 +1,7 @@
 import p5 from "p5";
 import * as Tone from "tone";
 import { app, db, collectionRef } from "../firebaseApp";
-import { onSnapshot, query, where } from "firebase/firestore";
+import { onSnapshot, query, where, addDoc } from "firebase/firestore";
 
 interface Point {
   x: number;
@@ -9,15 +9,6 @@ interface Point {
   ratio: number;
   time: number;
 };
-
-const q = query(collectionRef);
-const unsubscribe = onSnapshot(q, (querySnapshot) => {
-  const points: any[] = [];
-  querySnapshot.forEach((doc) => {
-      points.push(doc.data());
-  });
-  console.log("Current", points);
-});
 
 // interaction limits
 const MIN_RADIUS = 5;
@@ -69,6 +60,30 @@ const sketchBubble = ( p: p5 ) => {
   let pointsToConsume: Point[] = [];
   let consumingPoints: Point[] = [];
 
+  let unsubscribe: () => void; 
+  const listen = () => {
+    if (unsubscribe) {
+      unsubscribe();
+    }
+    const q = query(collectionRef, where("time", ">", Date.now()));
+    unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const points: any[] = [];
+      querySnapshot.forEach((doc) => {
+          points.push(doc.data());
+      });
+      console.log("Current", points);
+      pointsToConsume = points;
+    });
+  }
+
+  // update every 10s to prevent getting old data
+  setInterval(listen, 10 * 1000);
+
+  async function addPoint(point: Point) {
+    const docRef = await addDoc(collectionRef, point);
+    console.log("Document written with ID: ", docRef.id);
+  }
+
   p.setup = () => {
     p.createCanvas(width, height);
   };
@@ -111,7 +126,11 @@ const sketchBubble = ( p: p5 ) => {
         const duration = getPointConsumingTimeLeft(now, point) / 1000;
         if (duration > 0) {
           console.log(c, duration);
-          synth.triggerAttackRelease(c, duration);
+          try {
+            synth.triggerAttackRelease(c, duration);
+          } catch (e) {
+            // seems it cannot attack multiple notes if they are coming too close
+          }
         }
       } else {
         nextPointsToConsume.push(point);
@@ -180,12 +199,14 @@ const sketchBubble = ( p: p5 ) => {
     if (!interactingCircle.startTime) {
       return false;
     }
-    pointsToConsume.push({
+    const newPoint = {
       x: interactingCircle.x,
       y: interactingCircle.y,
       ratio: interactingCircle.ratio,
       time: Date.now(),
-    });
+    };
+
+    addPoint(newPoint);
 
     interactingCircle.ratio = 0;
     interactingCircle.startTime = 0;

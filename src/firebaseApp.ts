@@ -33,7 +33,7 @@ async function test() {
   const docRef = await addDoc(collection(db, COLLECTION_NAME), {
     x: Math.random(),
     y: Math.random(),
-    radius: Math.random(),
+    ratio: Math.random(),
     time: Date.now()
   });
   console.log("Document written with ID: ", docRef.id);
