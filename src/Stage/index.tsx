@@ -1,8 +1,11 @@
 import { useRef, useEffect } from "react";
-import { createSketchBubble } from "../sketches";
+import { createSketchBubble, createSketchBubbleForGlass } from "../sketches";
 import p5 from "p5";
 
 import "./index.css";
+
+const query = new URLSearchParams(window.location.search);
+console.log(query.get("sketch"));
 
 export const Stage = () => {
 	const domRef = useRef<HTMLDivElement>(null);
@@ -10,7 +13,11 @@ export const Stage = () => {
 	useEffect(() => {
 		const dom = domRef.current;
 		if (dom && !sketchRef.current) {
-			sketchRef.current = createSketchBubble(dom);
+			if (query.get("sketch") === "sats") {
+				sketchRef.current = createSketchBubbleForGlass(dom);
+			} else {
+				sketchRef.current = createSketchBubble(dom);
+			}
 		}
 	}, []);
 
