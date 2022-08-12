@@ -10,6 +10,12 @@ interface Point {
   time: number;
 };
 
+// const originalNow = Date.now.bind(Date);
+
+// const targetDate = new Date("2022-08-11 00:20:00").getTime();
+// const currentDate = Date.now();
+// Date.now = () => originalNow() - (currentDate - targetDate);
+
 // interaction limits
 const MIN_RADIUS = 5;
 const MIN_RADIUS_RATIO = 0.01;
